@@ -622,6 +622,7 @@ class Rma(models.Model):
         and 'rma_refund_action_server' server action is run.
         """
         group_dict = {}
+        self._ensure_can_be_refunded()
         for record in self.filtered("can_be_refunded"):
             key = (record.partner_invoice_id.id, record.company_id.id)
             group_dict.setdefault(key, self.env['rma'])
@@ -836,6 +837,19 @@ class Rma(models.Model):
         elif not self.filtered("can_be_replaced"):
             raise ValidationError(
                 _("None of the selected RMAs can perform a replacement."))
+
+    def _ensure_can_be_refunded(self):
+        """Ensures at least one record in self can be refunded.
+        invoked by:
+        rma.action_refund
+        """
+        if len(self) == 1:
+            if not self.can_be_refunded:
+                raise ValidationError(
+                    _("This RMA can not be refunded."))
+        elif not self.filtered("can_be_refunded"):
+            raise ValidationError(
+                _("None of the selected RMAs are refundable."))
 
     def _ensure_can_be_split(self):
         """intended to be called before launch and after save the split wizard.
