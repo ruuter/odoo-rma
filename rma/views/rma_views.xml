@@ -96,10 +96,15 @@
                             name="action_rma_send"
                             attrs="{'invisible':['|', ('sent','=',False), ('state', 'not in', ['draft', 'confirmed', 'received'])]}" />
                     <button type="object"
-                            string="Confirm"
+                            string="Confirm &amp; Receive"
                             name="action_confirm"
                             states="draft"
                             class="btn-primary"/>
+                    <button type="object"
+                            string="Confirm"
+                            name="action_confirm"
+                            context="{'no_receipt': True}"
+                            states="draft"/>
                     <button type="object"
                             string="To Refund"
                             name="action_refund"

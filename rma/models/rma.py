@@ -605,14 +605,17 @@ class Rma(models.Model):
         self.ensure_one()
         self._ensure_required_fields()
         if self.state == 'draft':
-            if self.picking_id:
-                reception_move = self._create_receptions_from_picking()
+            if self.env.context.get('no_receipt'):
+                self.write({'state': 'received'})
             else:
-                reception_move = self._create_receptions_from_product()
-            self.write({
-                'reception_move_id': reception_move.id,
-                'state': 'confirmed',
-            })
+                if self.picking_id:
+                    reception_move = self._create_receptions_from_picking()
+                else:
+                    reception_move = self._create_receptions_from_product()
+                self.write({
+                    'reception_move_id': reception_move.id,
+                    'state': 'confirmed',
+                })
             if self.partner_id not in self.message_partner_ids:
                 self.message_subscribe([self.partner_id.id])
             self._send_confirmation_email()
@@ -1058,12 +1061,7 @@ class Rma(models.Model):
                 # create method intead of save the form.
                 picking_vals = picking_form._values_to_save(all_fields=True)
                 move_vals = picking_vals['move_ids_without_package'][-1][2]
-                move_vals.update(
-                    picking_id=picking.id,
-                    rma_id=rma.id,
-                    move_orig_ids=[(4, rma.reception_move_id.id)],
-                    company_id=picking.company_id.id,
-                )
+                move_vals = rma._prepare_return_move_vals(picking, move_vals)
                 self.env['stock.move'].sudo().create(move_vals)
                 rma.message_post(
                     body=_(
@@ -1093,6 +1091,17 @@ class Rma(models.Model):
         move_form.product_uom = uom or self.product_uom
         move_form.date_expected = scheduled_date
 
+    def _prepare_return_move_vals(self, picking, vals={}):
+        self.ensure_one()
+        vals.update(
+            rma_id=self.id,
+            picking_id=picking.id,
+            company_id=picking.company_id.id,
+        )
+        if self.reception_move_id:
+            vals['move_orig_ids'] = [(4, self.reception_move_id.id)]
+        return vals
+
     # Replacing business methods
     def create_replace(self, scheduled_date, warehouse, product, qty, uom):
         """Intended to be invoked by the delivery wizard"""
@@ -1103,7 +1112,8 @@ class Rma(models.Model):
                                        qty, uom)
         new_move = self.delivery_move_ids - moves_before
         if new_move:
-            self.reception_move_id.move_dest_ids = [(4, new_move.id)]
+            if self.reception_move_id:
+                self.reception_move_id.move_dest_ids = [(4, new_move.id)]
             self.message_post(
                 body=_(
                     'Replacement: '
